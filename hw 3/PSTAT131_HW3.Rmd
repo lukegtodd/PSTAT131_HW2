@@ -9,5 +9,209 @@ output: html_document
 
 knitr::opts_chunk$set(echo = TRUE)
 
+library(here)
+library(ggplot2)
+library(tidyverse)
+library(tidymodels)
+library(corrr)
+library(corrplot)
+library(ggthemes)
+library(yardstick)
+library(discrim)
+library(poissonreg)
+library(klaR)
+tidymodels_prefer()
+
+titanic <- read_csv(here("hw 3/data/titanic.csv"))
+
+set.seed(3068)
+
 ```
+
+#### Changing survived and pclass to factors
+```{r}
+
+titanic$survived <- factor(titanic$survived, levels = c("Yes", "No"))
+levels(titanic$survived)
+
+titanic$pclass <- factor(titanic$pclass)
+class(titanic$pclass)
+
+```
+
+
+### Question 1
+```{r}
+
+titanic_split <- initial_split(titanic, prop = 0.8,
+                               strata = survived)
+
+titanic_train <- training(titanic_split)
+titanic_test <- testing(titanic_split)
+
+```
+
+I think that using stratified sampling is good for this data because we won't get a skewed random sample. It better represents the entire population.
+
+
+### Question 2
+```{r}
+
+plot(titanic_train$survived)
+
+```
+The survived variable's distribution shows that it was more common for someone on the Titanic to die, than it was for them to survive.
+
+### Question 3
+```{r}
+
+cor_titanic <- titanic_train %>%
+  select(-survived, -pclass, -name, -sex, -ticket, -cabin, -embarked) %>%
+  correlate()
+
+rplot(cor_titanic)
+
+cor_titanic %>%
+  stretch() %>%
+  ggplot(aes(x, y, fill = r)) +
+  geom_tile() +
+  geom_text(aes(label = as.character(fashion(r))))
+
+```
+The highest levels of correlation are between sib_sp and age, with a negative correlation of 0.31, as well as sib_sp and parch, with a positive correlation of 0.43. These correlation levels are not very high.
+
+
+### Question 4
+```{r}
+
+titanic_recipe <- recipe(survived ~ pclass, sex, age, sib_sp, parch, fare, data = titanic_train) %>%
+  step_impute_linear() %>%
+  step_dummy(all_nominal_predictors()) %>%
+  step_interact(terms = ~ sex:fare +
+                  age:fare)
+
+```
+
+
+### Question 5
+```{r}
+
+log_reg <- logistic_reg() %>%
+  set_engine("glm") %>%
+  set_mode("classification")
+
+log_wkflow <- workflow() %>%
+  add_model(log_reg) %>%
+  add_recipe(titanic_recipe)
+
+log_fit <- fit(log_wkflow, titanic_train)
+
+log_fit %>% tidy()
+
+```
+
+
+### Question 6
+```{r}
+
+lda_mod <- discrim_linear() %>% 
+  set_mode("classification") %>% 
+  set_engine("MASS")
+
+lda_wkflow <- workflow() %>% 
+  add_model(lda_mod) %>% 
+  add_recipe(titanic_recipe)
+
+lda_fit <- fit(lda_wkflow, titanic_train)
+
+```
+
+
+### Question 7
+```{r}
+
+qda_mod <- discrim_quad() %>% 
+  set_mode("classification") %>% 
+  set_engine("MASS")
+
+qda_wkflow <- workflow() %>% 
+  add_model(qda_mod) %>% 
+  add_recipe(titanic_recipe)
+
+qda_fit <- fit(qda_wkflow, titanic_train)
+
+```
+
+
+### Question 8
+```{r}
+
+nb_mod <- naive_Bayes() %>% 
+  set_mode("classification") %>% 
+  set_engine("klaR") %>% 
+  set_args(usekernel = FALSE) 
+
+nb_wkflow <- workflow() %>% 
+  add_model(nb_mod) %>% 
+  add_recipe(titanic_recipe)
+
+nb_fit <- fit(nb_wkflow, titanic_train)
+
+```
+
+
+### Question 9
+```{r}
+
+predict(log_fit, new_data = titanic_train, type = "prob")
+log_reg_acc <- augment(log_fit, new_data = titanic_train) %>%
+  accuracy(truth = survived, estimate = .pred_class)
+log_reg_acc
+
+predict(lda_fit, new_data = titanic_train, type = "prob")
+lda_acc <- augment(lda_fit, new_data = titanic_train) %>%
+  accuracy(truth = survived, estimate = .pred_class)
+lda_acc
+
+predict(qda_fit, new_data = titanic_train, type = "prob")
+qda_acc <- augment(qda_fit, new_data = titanic_train) %>%
+  accuracy(truth = survived, estimate = .pred_class)
+qda_acc
+
+predict(nb_fit, new_data = titanic_train, type = "prob")
+nb_acc <- augment(nb_fit, new_data = titanic_train) %>%
+  accuracy(truth = survived, estimate = .pred_class)
+nb_acc
+
+```
+
+Log fit and LDA fit had the highest accuracy on the training data.
+
+
+### Question 10
+```{r}
+
+predict(log_fit, new_data = titanic_test, type = "prob")
+
+# confusion matrix
+augment(log_fit, new_data = titanic_test) %>%
+  conf_mat(truth = survived, estimate = .pred_class) 
+
+augment(log_fit, new_data = titanic_test) %>%
+  accuracy(truth = survived, estimate = .pred_class)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
 
