@@ -37,6 +37,11 @@ levels(titanic$survived)
 titanic$pclass <- factor(titanic$pclass)
 class(titanic$pclass)
 
+# titanic <- read_csv(file = "data/titanic.csv") %>% 
+#   mutate(survived = factor(survived, 
+#                            levels = c("Yes", "No")),
+#          pclass = factor(pclass))
+
 ```
 
 
@@ -49,6 +54,8 @@ titanic_split <- initial_split(titanic, prop = 0.8,
 titanic_train <- training(titanic_split)
 titanic_test <- testing(titanic_split)
 
+dim(titanic_train)
+
 ```
 
 I think that using stratified sampling is good for this data because we won't get a skewed random sample. It better represents the entire population.
@@ -57,7 +64,11 @@ I think that using stratified sampling is good for this data because we won't ge
 ### Question 2
 ```{r}
 
-plot(titanic_train$survived)
+# plot(titanic_train$survived)
+
+titanic_train %>%
+  ggplot(aes(x = survived)) + 
+  geom_bar()
 
 ```
 The survived variable's distribution shows that it was more common for someone on the Titanic to die, than it was for them to survive.
@@ -86,9 +97,9 @@ The highest levels of correlation are between sib_sp and age, with a negative co
 
 titanic_recipe <- recipe(survived ~ pclass, sex, age, sib_sp, parch, fare, data = titanic_train) %>%
   step_impute_linear() %>%
-  step_dummy(all_nominal_predictors()) %>%
   step_interact(terms = ~ sex:fare +
-                  age:fare)
+                  age:fare) %>%
+  step_dummy(all_nominal_predictors()) %>%
 
 ```
 

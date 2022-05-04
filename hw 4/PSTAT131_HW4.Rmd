@@ -1,0 +1,175 @@
+---
+title: "PSTAT 131 HW 4"
+author: "Luke Todd"
+date: "4/23/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE)
+
+library(here)
+library(ggplot2)
+library(tidyverse)
+library(tidymodels)
+library(ISLR)
+library(ISLR2)
+library(corrr)
+library(corrplot)
+library(ggthemes)
+library(yardstick)
+library(discrim)
+library(poissonreg)
+library(klaR)
+library(tune)
+library(purrr)
+tidymodels_prefer()
+
+titanic <- read_csv(here("hw 3/data/titanic.csv"))
+
+set.seed(3068)
+
+```
+
+
+#### Changing survived and pclass to factors
+```{r}
+
+titanic$survived <- factor(titanic$survived, levels = c("Yes", "No"))
+levels(titanic$survived)
+
+titanic$pclass <- factor(titanic$pclass)
+class(titanic$pclass)
+
+```
+
+
+### Question 1: Splitting the data
+```{r}
+
+titanic_split <- initial_split(titanic, prop = 0.8,
+                               strata = survived)
+
+titanic_train <- training(titanic_split)
+titanic_test <- testing(titanic_split)
+
+```
+
+
+### Creating a recipe from HW 3
+```{r}
+
+titanic_recipe <- recipe(survived ~ pclass + sex + age + 
+                           sib_sp + parch + fare, data = titanic_train) %>% 
+  step_impute_linear(age) %>% 
+  step_dummy(all_nominal_predictors()) %>% 
+  step_center(all_numeric_predictors()) %>%
+  step_scale(all_numeric_predictors())
+```
+
+
+### Question 2: Using k-fold cross-validation
+```{r}
+
+titanic_folds <- vfold_cv(titanic_train, v = 10)
+
+```
+
+
+### Question 3: What is k-fold cross-validation?
+K-fold cross-validation ensures that every observation from the original data set has the chance of appearing in training and test set. It "folds" the training set into your specified amount of folds (k), so that k iterations of modeling building and testing can be performed, eventually calculating metrics from each of the folds. Some of these metrics may include average, range, and standard deviation.
+
+If we did just use the entire training set, this would be called the **validation set approach.**
+
+
+### Question 4: Set up workflows for 3 models
+```{r}
+
+# 1: Logistic regression
+
+log_reg <- logistic_reg() %>%
+  set_mode("classification") %>%
+  set_engine("glm")
+
+log_wkflow <- workflow() %>%
+  add_recipe(titanic_recipe) %>%
+  add_model(log_reg)
+
+# 2: Linear Discriminant Analysis
+lda_mod <- discrim_linear() %>% 
+  set_mode("classification") %>% 
+  set_engine("MASS")
+
+lda_wkflow <- workflow() %>% 
+  add_model(lda_mod) %>% 
+  add_recipe(titanic_recipe)
+
+# 3: Quadratic Discriminant Analysis
+qda_mod <- discrim_quad() %>% 
+  set_mode("classification") %>% 
+  set_engine("MASS")
+
+qda_wkflow <- workflow() %>% 
+  add_model(qda_mod) %>% 
+  add_recipe(titanic_recipe)
+
+```
+
+There are 10 folds and we will be fitting 3 models to each fold, so we will end up fitting 30 models total across all folds.
+
+
+### Question 5: Fit each of the models to the folded data
+```{r}
+
+log_fit <- fit_resamples(log_wkflow, titanic_folds)
+
+lda_fit <- fit_resamples(lda_wkflow, titanic_folds)
+
+qda_fit <- fit_resamples(qda_wkflow, titanic_folds)
+
+```
+
+
+### Question 6: collect_metrics()
+```{r}
+
+collect_metrics(log_fit)
+collect_metrics(lda_fit)
+collect_metrics(qda_fit)
+
+```
+
+It can be seen that the log fit was the best model. It has the highest accuracy, as well as the lowest standard error when compared to the other two models.
+
+
+### Question 7: fit to entire training dataset (not folds)
+```{r}
+
+final_log_fit <- fit(log_wkflow, data = titanic_train)
+
+```
+
+
+### Question 8: assess model's performance
+```{r}
+
+log_test <- fit(log_wkflow, titanic_test)
+predict(log_test, new_data = titanic_test, type = "class") %>% 
+  bind_cols(titanic_test %>% select(survived)) %>% 
+  accuracy(truth = survived, estimate = .pred_class)
+
+```
+The testing data resulted in an accuracy of 0.8156, which is higher than the accuracy of 0.8048 that we saw on the training data. This shows that our data fits the model well.
+
+
+
+
+
+
+
+
+
+
+
+

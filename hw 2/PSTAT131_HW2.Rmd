@@ -18,7 +18,7 @@ library(ggthemes)
 library(yardstick)
 tidymodels_prefer()
 
-abalone <- read_csv(here("data/abalone.csv"))
+abalone <- read_csv(here("hw 2/data/abalone.csv"))
 
 ```
 
@@ -29,7 +29,10 @@ abalone <- read_csv(here("data/abalone.csv"))
 abalone <- abalone %>% 
   mutate(age = rings + 1.5)
 
-hist(abalone$age)
+abalone %>%
+  ggplot(aes(x = age)) + geom_histogram()
+
+# hist(abalone$age)
 
 ```
 
@@ -54,21 +57,31 @@ abalone_test <- testing(abalone_split)
 
 ```{r}
 
-abalone_recipe <- recipe(age ~ type + 
-                           longest_shell + 
-                           diameter + 
-                           height + 
-                           whole_weight + 
-                           shucked_weight + 
-                           viscera_weight + 
-                           shell_weight, 
-                         data = abalone_train) %>%
-  step_dummy(all_nominal_predictors()) %>%
-  step_interact(terms = ~ type:shucked_weight +
-                  longest_shell:diameter +
-                  shucked_weight:shell_weight) %>%
-  step_center() %>%
-  step_scale()
+# abalone_recipe <- recipe(age ~ type + 
+#                            longest_shell + 
+#                            diameter + 
+#                            height + 
+#                            whole_weight + 
+#                            shucked_weight + 
+#                            viscera_weight + 
+#                            shell_weight, 
+#                          data = abalone_train) %>%
+#   step_dummy(all_nominal_predictors()) %>%
+#   step_interact(terms = ~ type:shucked_weight +
+#                   longest_shell:diameter +
+#                   shucked_weight:shell_weight) %>%
+#   step_center() %>%
+#   step_scale()
+
+abalone_recipe <- recipe(age ~ . , data = abalone_train) %>% 
+  step_rm(rings) %>% 
+  step_dummy(all_nominal_predictors()) %>% 
+  step_interact(terms = ~ starts_with("type"):shucked_weight +
+                  longest_shell:diameter + 
+                  shucked_weight:shell_weight) %>% 
+  step_normalize(all_predictors())
+
+# step_normalize does step_center() and step_scale() in the same line of code
 
 ```
 
@@ -86,8 +99,8 @@ lm_model <- linear_reg() %>%
 # Question 5
 
 lm_wflow <- workflow() %>%
-  add_model(lm_model) %>%
-  add_recipe(abalone_recipe)
+  add_recipe(abalone_recipe) %>%
+  add_model(lm_model)
 
 lm_fit <- fit(lm_wflow, abalone_train)
 
@@ -97,7 +110,10 @@ tib <- lm_fit %>%
 
 # Question 6
 
-new_data <- data.frame(type = "F", longest_shell = 0.50, diameter = 0.10, height = 0.30, whole_weight = 4, shucked_weight = 1, viscera_weight = 2, shell_weight = 1)
+new_data <- data.frame(type = "F", longest_shell = 0.50, 
+                       diameter = 0.10, height = 0.30, whole_weight = 4, 
+                       shucked_weight = 1, viscera_weight = 2, shell_weight = 1,
+                       rings = 0)
 
 predict(lm_fit, new_data = new_data)
 
@@ -121,6 +137,11 @@ abalone_train_res <- bind_cols(abalone_train_res, abalone_train %>% select(age))
 abalone_train_res %>% head()
 
 metrics(abalone_train_res, truth = age, estimate = .pred)
+
+# multi_metric <- metric_set(rmse, rsq, mae)
+# abalone_predict <- predict(abalone_fit, abalone_train) %>% 
+#   bind_cols(abalone_train %>% select(age))
+# multi_metric(abalone_predict, truth = age, estimate = .pred)
 
 ```
 
