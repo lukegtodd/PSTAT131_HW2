@@ -1,0 +1,145 @@
+---
+title: "PSTAT 131 HW 5"
+author: "Luke Todd"
+date: "5/15/2022"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE)
+
+library(here)
+library(ggplot2)
+library(tidyverse)
+library(tidymodels)
+library(yardstick)
+library(janitor)
+library(sqldf)
+library(sjmisc)
+tidymodels_prefer()
+
+pokemon <- read_csv(here("hw 5/data/Pokemon.csv"))
+
+set.seed(3068)
+
+```
+
+### Exercise 1
+```{r}
+
+pokemon <- clean_names(pokemon)
+
+```
+clean_names() is a useful function because it provides a standard naming system for the whole dataset. This way, the data is more predictable than it would be packaged raw.
+
+### Exercise 2
+```{r}
+
+ggplot(data = pokemon, aes(type_1)) + geom_bar()
+
+```
+Based on the plot, there are 18 different types. Flying and fairy have a small amount of pokemon when compared to other types.
+
+```{r}
+
+pokemon <- sqldf('SELECT * FROM pokemon WHERE type_1 IN ("Normal", "Bug", "Grass", "Fire", "Water", "Psychic")')
+
+pokemon <- pokemon %>% 
+  mutate(type_1 = factor(type_1),
+         legendary = factor(legendary),
+         generation = factor(generation))
+
+```
+
+### Exercise 3
+```{r}
+
+pokemon_split <- initial_split(pokemon, prop = 0.8,
+                               strata = type_1)
+
+pokemon_train <- training(pokemon_split)
+pokemon_test <- testing(pokemon_split)
+
+pokemon_fold <- vfold_cv(pokemon_train, v = 5,
+                         strata = type_1)
+
+```
+
+### Exercise 4
+```{r}
+
+pokemon_recipe <- recipe(type_1 ~ legendary + generation + sp_atk + 
+                           attack + speed + defense + hp + sp_def, data = pokemon) %>%
+  step_dummy(all_nominal_predictors()) %>% 
+  step_normalize(all_predictors())
+
+```
+
+### Exercise 5
+```{r}
+
+multinom_model <- multinom_reg(mixture = tune(), penalty = tune()) %>%
+  set_mode("classification") %>%
+  set_engine("glmnet")
+
+multinom_workflow <- workflow() %>%
+  add_recipe(pokemon_recipe) %>%
+  add_model(multinom_model)
+
+pokemon_grid <- grid_regular(penalty(range = c(-5, 5)), mixture(range = c(0,1)), levels = 10)
+pokemon_grid
+```
+When we fit these models to the folded data, we will be fitting a total of 500 models.
+
+### Exercise 6
+```{r}
+
+tune_res <- tune_grid(multinom_workflow,
+  resamples = pokemon_fold, 
+  grid = pokemon_grid)
+
+autoplot(tune_res)
+
+```
+Smaller values of penalty and mixture produce better accuracy and ROC AUC.
+
+### Exercise 7
+```{r}
+
+best <- select_best(tune_res)
+
+multinom_final <- finalize_workflow(multinom_workflow, best)
+
+multinom_final_fit <-  fit(multinom_final, data = pokemon_train)
+augment(multinom_final_fit, new_data = pokemon_test) %>%
+  accuracy(truth = type_1, estimate = .pred_class)
+
+```
+
+### Exercise 8
+```{r}
+
+# table
+augment(multinom_final_fit, new_data = pokemon_test, type = 'prob')
+
+# plots
+augment(multinom_final_fit, new_data = pokemon_test, type = 'prob') %>%
+  roc_curve(type_1, estimate = c(.pred_Bug,
+                                 .pred_Fire,
+                                 .pred_Grass,
+                                 .pred_Normal,
+                                 .pred_Psychic,
+                                 .pred_Water)) %>%
+  autoplot()
+
+# heatmap of confusion matrix
+augment(multinom_final_fit, new_data = pokemon_test) %>%
+  conf_mat(truth = type_1, estimate = .pred_class) %>%
+  autoplot(type = 'heatmap')
+
+```
+The models did relatively well. Based on these plots, we can see that our models did best at predicting normal, water, and psychic. For the rest of the types, the models were insufficient. My best guess for the models not fitting too well is just based on the fact that many of these pokemon have more than one type. We may be trying to guess the type_1 of the pokemon based on all of our observations, but in reality, these may be a result of the second type of the pokemon.
+
+
+
