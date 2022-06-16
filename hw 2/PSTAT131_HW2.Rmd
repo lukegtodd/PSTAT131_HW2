@@ -2,7 +2,7 @@
 title: "PSTAT 131 HW 2"
 author: "Luke Todd"
 date: "4/10/2022"
-output: html_document
+output: pdf_document
 ---
 
 ```{r setup, include=FALSE}
